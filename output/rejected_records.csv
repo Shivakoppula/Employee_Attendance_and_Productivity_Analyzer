@@ -1,0 +1,4 @@
+source_row,employee_id,name,date,status,rejection_reasons
+12,E004,Invalid Example,not-a-date,PRESENT,"date must use YYYY-MM-DD, DD/MM/YYYY, or MM/DD/YYYY"
+13,E002,Rahul Das,2026-10-01,PRESENT,duplicate employee_id and date
+14,E005,,2026-10-01,PRESENT,name is required

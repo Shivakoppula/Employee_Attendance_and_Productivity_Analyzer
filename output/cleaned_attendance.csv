@@ -1,0 +1,11 @@
+employee_id,name,date,status,department,login_time,logout_time,hours_worked
+E001,Asha Rao,2026-10-01,PRESENT,Engineering,09:00:00,17:00:00,8.0
+E001,Asha Rao,2026-10-02,LATE,Engineering,09:35:00,17:00:00,7.42
+E001,Asha Rao,2026-10-03,ABSENT,Unspecified,,,0.0
+E001,Asha Rao,2026-10-04,LEAVE,Unspecified,,,0.0
+E002,Rahul Das,2026-10-01,PRESENT,Support,,,7.5
+E002,Rahul Das,2026-10-02,HALF-DAY,Support,,,4.0
+E002,Rahul Das,2026-10-03,PRESENT,Support,09:00:00,18:00:00,9.0
+E003,Meera Shah,2026-10-01,PRESENT,Finance,09:00:00,17:00:00,8.0
+E003,Meera Shah,2026-10-02,PRESENT,Finance,09:00:00,17:00:00,8.0
+E003,Meera Shah,2026-10-03,PRESENT,Finance,09:00:00,17:00:00,8.0

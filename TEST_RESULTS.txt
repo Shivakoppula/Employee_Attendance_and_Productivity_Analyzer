@@ -1,0 +1,17 @@
+Verification run: 2026-10-09
+Python: 3.13.15
+
+Command: python -m unittest discover -s tests -v
+Result: PASS (8 tests)
+
+Covered cases:
+- Date and time parsing; numeric hours validation
+- Attendance credit and employee metrics
+- Duplicate and invalid row rejection
+- Rejected rows do not block a later valid row for the same employee/date
+- Blank names are rejected
+- End-to-end generation of all report and log files
+
+Command: python main.py
+Result: PASS (exit code 0)
+Sample summary: 10 valid rows, 3 rejected rows, 3 employees, 4 exceptions.

@@ -1,0 +1,4 @@
+employee_id,name,department,records_count,eligible_days,attended_day_equivalent,attendance_percentage,total_working_hours,absent_days,late_days,half_days
+E001,Asha Rao,Unspecified,4,3,2.0,66.67,15.42,1,1,0
+E002,Rahul Das,Support,3,3,2.5,83.33,20.5,0,0,1
+E003,Meera Shah,Finance,3,3,3.0,100.0,24.0,0,0,0

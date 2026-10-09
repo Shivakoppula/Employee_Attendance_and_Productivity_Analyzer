@@ -1,0 +1,12 @@
+EMPLOYEE ATTENDANCE & PRODUCTIVITY SUMMARY
+============================================
+Valid attendance records: 10
+Rejected records: 3
+Employees analyzed: 3
+Attendance exceptions: 4
+Average employee attendance percentage: 83.33%
+Total working hours: 59.92
+
+Attendance percentage uses present + late + half-day credit (0.5), divided by eligible records.
+Approved leave records are excluded from eligible days.
+Low-hours threshold is configurable and defaults to 8 hours.
