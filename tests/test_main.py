@@ -15,10 +15,12 @@ import logging
 
 
 class AttendanceAnalyzerTests(unittest.TestCase):
+    # Supported input date formats should produce the same Python date value.
     def test_parse_date_formats(self):
         self.assertEqual(parse_date("2026-10-01"), date(2026, 10, 1))
         self.assertEqual(parse_date("01/10/2026"), date(2026, 10, 1))
 
+    # Optional fields may be blank, while provided hour values must be valid and nonnegative.
     def test_parse_time_and_hours(self):
         self.assertEqual(parse_time("09:30").hour, 9)
         self.assertIsNone(parse_time(""))
@@ -26,12 +28,14 @@ class AttendanceAnalyzerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_nonnegative_float("-1", "hours_worked")
 
+    # Attendance percentage uses full credit, half credit, or no credit by status.
     def test_attendance_credit(self):
         self.assertEqual(attendance_credit("PRESENT"), 1)
         self.assertEqual(attendance_credit("LATE"), 1)
         self.assertEqual(attendance_credit("HALF-DAY"), 0.5)
         self.assertEqual(attendance_credit("ABSENT"), 0)
 
+    # The first valid row wins a duplicate date; malformed dates are also rejected.
     def test_duplicate_and_invalid_rows_rejected(self):
         rows = [
             {"employee_id":"E1","name":"A","date":"2026-10-01","status":"Present","hours_worked":"8"},
@@ -45,6 +49,7 @@ class AttendanceAnalyzerTests(unittest.TestCase):
         self.assertIn("duplicate", rejected[0]["rejection_reasons"])
         self.assertIn("date must use", rejected[1]["rejection_reasons"])
 
+    # An invalid row must not reserve its employee/date and block a later valid row.
     def test_rejected_row_does_not_block_valid_row_for_same_date(self):
         rows = [
             {"employee_id": "E1", "name": "A", "date": "2026-10-01",
@@ -58,6 +63,7 @@ class AttendanceAnalyzerTests(unittest.TestCase):
         self.assertEqual(len(rejected), 1)
         self.assertIn("cannot have positive working hours", rejected[0]["rejection_reasons"])
 
+    # Time-only records for absent/leave statuses still need a forward-moving shift interval.
     def test_absent_and_leave_with_reversed_times_are_rejected(self):
         rows = [
             {"employee_id": "E1", "name": "A", "date": "2026-10-01",
@@ -71,6 +77,7 @@ class AttendanceAnalyzerTests(unittest.TestCase):
         for row in rejected:
             self.assertIn("logout_time must be later than login_time", row["rejection_reasons"])
 
+    # Names are required so summary and exception reports can identify employees.
     def test_blank_name_is_rejected(self):
         rows = [{"employee_id": "E1", "name": " ", "date": "2026-10-01",
                  "status": "Present", "hours_worked": "8"}]
@@ -79,6 +86,7 @@ class AttendanceAnalyzerTests(unittest.TestCase):
         self.assertEqual(len(rejected), 1)
         self.assertIn("name is required", rejected[0]["rejection_reasons"])
 
+    # Leave does not lower the attendance percentage; absent, late, and short hours affect metrics/exceptions.
     def test_metrics_and_exceptions(self):
         records = [
             AttendanceRecord("E1","A",date(2026,10,1),"PRESENT","IT",8,None,None,2),
@@ -94,6 +102,7 @@ class AttendanceAnalyzerTests(unittest.TestCase):
         self.assertIn("Late", exceptions[0]["exception"])
         self.assertIn("Low hours", exceptions[0]["exception"])
 
+    # A single complete present record should produce full attendance and no exceptions.
     def test_present_record_metrics(self):
         records = [
             AttendanceRecord("E1", "A", date(2026, 10, 1), "PRESENT", "IT", 8, None, None, 2),
@@ -105,6 +114,7 @@ class AttendanceAnalyzerTests(unittest.TestCase):
         self.assertEqual(summaries[0]["total_working_hours"], 8.0)
         self.assertEqual(exceptions, [])
 
+    # Exercise the complete read-clean-calculate-write pipeline using a temporary CSV.
     def test_end_to_end_creates_outputs(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -118,6 +128,7 @@ class AttendanceAnalyzerTests(unittest.TestCase):
                          "employee_summary.csv","attendance_exceptions.csv",
                          "summary_report.txt","application.log"):
                 self.assertTrue((out / name).exists(), name)
+            # run() does not open the optional browser report unless requested.
             self.assertFalse((out / "attendance_report.html").exists())
 
 

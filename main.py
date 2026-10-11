@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import argparse
 import csv
-import json
+import json  # Serializes report data before it is embedded in the HTML template.
 import logging
 import sys
-import webbrowser
+import webbrowser  # Opens the optional interactive report produced by the CLI.
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, time
@@ -63,6 +63,7 @@ def configure_logging(output_dir: Path) -> logging.Logger:
 
 def parse_date(value: str) -> date:
     """Parse common ISO and day/month/year date formats."""
+    # Trim spreadsheet whitespace, then try only the date formats documented for this input.
     value = (value or "").strip()
     for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y"):
         try:
@@ -74,6 +75,7 @@ def parse_date(value: str) -> date:
 
 def parse_time(value: str) -> time | None:
     """Parse a time value; blank values return None."""
+    # Blank times are allowed when the row provides hours_worked directly.
     value = (value or "").strip()
     if not value:
         return None
@@ -87,6 +89,7 @@ def parse_time(value: str) -> time | None:
 
 def parse_nonnegative_float(value: str, field_name: str) -> float | None:
     """Parse an optional non-negative number, rejecting invalid numeric values."""
+    # Keep blank values distinguishable from zero; reject negative and non-finite hours.
     value = (value or "").strip()
     if not value:
         return None
@@ -106,6 +109,7 @@ def read_input(path: Path) -> list[dict[str, str]]:
     # Deliverable: accept CSV input and optional XLSX input.
     if not path.exists():
         raise FileNotFoundError(f"Input file not found: {path}")
+    # Lowercase the extension so input type selection works for .CSV and .XLSX too.
     suffix = path.suffix.lower()
     if suffix == ".csv":
         # DictReader maps each CSV row by its column names; utf-8-sig also
@@ -114,11 +118,13 @@ def read_input(path: Path) -> list[dict[str, str]]:
             reader = csv.DictReader(handle)
             if reader.fieldnames is None:
                 raise ValueError("Input CSV is empty or has no header row")
+            # Normalize column labels once so capitalization and surrounding spaces do not matter.
             normalized = [str(c).strip().lower() for c in reader.fieldnames]
             if len(normalized) != len(set(normalized)):
                 raise ValueError("Input contains duplicate column names after normalization")
             rows = []
             for raw in reader:
+                # Ignore extra unnamed CSV cells and treat empty cells as blank strings.
                 rows.append({str(k).strip().lower(): (v or "").strip()
                              for k, v in raw.items() if k is not None})
             return rows
@@ -130,6 +136,7 @@ def read_input(path: Path) -> list[dict[str, str]]:
         except ImportError as exc:
             raise RuntimeError("Reading Excel requires pandas and openpyxl. Install with: pip install pandas openpyxl") from exc
         frame = pd.read_excel(path, dtype=str).fillna("")
+        # Apply the same column-name normalization as the CSV path.
         frame.columns = [str(c).strip().lower() for c in frame.columns]
         if frame.columns.duplicated().any():
             raise ValueError("Input contains duplicate column names after normalization")
@@ -156,9 +163,11 @@ def validate_and_clean(rows: list[dict[str, str]], logger: logging.Logger
     # CSV row numbers start at 2 because row 1 contains the column headings.
     for row_number, row in enumerate(rows, start=2):
         errors: list[str] = []
+        # Normalize each field before validation so comparisons use a consistent form.
         employee_id = (row.get("employee_id") or "").strip()
         name = (row.get("name") or "").strip()
         raw_date = row.get("date", "")
+        # Uppercase statuses for comparisons and accept Half_Day as Half-Day.
         status = (row.get("status") or "").strip().upper().replace("_", "-")
         department = (row.get("department") or "").strip() or "Unspecified"
         work_date: date | None = None
@@ -166,6 +175,7 @@ def validate_and_clean(rows: list[dict[str, str]], logger: logging.Logger
         logout: time | None = None
         hours: float | None = None
 
+        # Collect all basic field problems together so one rejection lists every issue on that row.
         if not employee_id:
             errors.append("employee_id is required")
         if not name:
@@ -196,6 +206,7 @@ def validate_and_clean(rows: list[dict[str, str]], logger: logging.Logger
             if (login is None) != (logout is None):
                 errors.append("login_time and logout_time must both be provided")
         elif hours is None:
+            # Attended statuses must include either explicit hours or a complete, forward-moving time pair.
             if status in {"PRESENT", "LATE", "HALF-DAY"}:
                 if login is None or logout is None:
                     errors.append("provide hours_worked or both login_time and logout_time for attended days")
@@ -206,6 +217,7 @@ def validate_and_clean(rows: list[dict[str, str]], logger: logging.Logger
             elif status in {"ABSENT", "LEAVE"} and login is not None and logout is not None and logout <= login:
                 errors.append("logout_time must be later than login_time; overnight shifts are not supported")
 
+        # More than 24 hours cannot fit into a supported single-day shift.
         if hours is not None and hours > 24:
             errors.append("hours_worked cannot exceed 24")
 
@@ -249,6 +261,7 @@ def validate_and_clean(rows: list[dict[str, str]], logger: logging.Logger
             continue
 
         if key in seen_keys:
+            # Reject repeat dates so an employee's attendance cannot be counted twice.
             rejected.append({
                 "source_row": str(row_number),
                 "employee_id": employee_id,
@@ -271,6 +284,7 @@ def validate_and_clean(rows: list[dict[str, str]], logger: logging.Logger
 
 def attendance_credit(status: str) -> float:
     """Convert a status into attendance credit: full, half, or zero days."""
+    # Full credit applies to Present/Late, half credit to Half-Day, and no credit otherwise.
     if status in {"PRESENT", "LATE"}:
         return 1.0
     if status == "HALF-DAY":
@@ -290,6 +304,7 @@ def calculate_metrics(records: list[AttendanceRecord], low_hours_threshold: floa
     summaries: list[dict[str, Any]] = []
     exceptions: list[dict[str, Any]] = []
     for employee_id, employee_records in sorted(grouped.items()):
+        # Sorting makes the last accepted date the source of the displayed name and department.
         employee_records.sort(key=lambda r: r.work_date)
         name = employee_records[-1].name
         department = employee_records[-1].department
@@ -297,6 +312,7 @@ def calculate_metrics(records: list[AttendanceRecord], low_hours_threshold: floa
         # Approved leave is assumed to be excused, so it is left out of the
         # attendance percentage denominator.
         eligible_days = sum(1 for r in employee_records if r.status != "LEAVE")
+        # Sum fractional day credits before dividing by eligible scheduled records.
         attended_credit = sum(attendance_credit(r.status) for r in employee_records)
         percentage = (attended_credit / eligible_days * 100) if eligible_days else 0.0
         total_hours = sum(r.hours_worked for r in employee_records)
@@ -344,6 +360,7 @@ def calculate_metrics(records: list[AttendanceRecord], low_hours_threshold: floa
 
 def write_csv(path: Path, rows: list[dict[str, Any]], fieldnames: list[str]) -> None:
     """Write rows to CSV and preserve headers for empty reports."""
+    # Always write the header, even when there are no rows, so each report stays usable.
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
@@ -354,6 +371,7 @@ def write_csv(path: Path, rows: list[dict[str, Any]], fieldnames: list[str]) -> 
 def write_browser_report(path: Path, records: list[AttendanceRecord], rejected: list[dict[str, str]],
                          summaries: list[dict[str, Any]], exceptions: list[dict[str, Any]]) -> None:
     """Create a self-contained interactive HTML report for the latest run."""
+    # Match each accepted attendance row to any exception reasons for display in the browser table.
     exception_by_record = {(row["employee_id"], row["date"]): row["exception"] for row in exceptions}
     detail_rows = [{
         "employee_id": row.employee_id,
@@ -366,6 +384,7 @@ def write_browser_report(path: Path, records: list[AttendanceRecord], rejected: 
     } for row in records]
     average_attendance = (sum(row["attendance_percentage"] for row in summaries) / len(summaries)
                           if summaries else 0.0)
+    # Pass only the data the browser view needs: accepted rows, rejected rows, summaries, and totals.
     data = {
         "records": detail_rows,
         "rejected": rejected,
@@ -379,8 +398,9 @@ def write_browser_report(path: Path, records: list[AttendanceRecord], rejected: 
             "total_hours": round(sum(row.hours_worked for row in records), 2),
         },
     }
-    # Escape '<' so CSV text cannot end the embedded script tag.
+    # JSON embeds the Python results in the HTML; escaping '<' prevents data ending a script tag.
     report_data = json.dumps(data, ensure_ascii=False).replace("<", "\\u003c")
+    # Keep the report template beside this script, independent of the caller's working directory.
     template_path = Path(__file__).resolve().parent / "report.html"
     template = template_path.read_text(encoding="utf-8")
     document = template.replace("__REPORT_DATA__", report_data)
@@ -436,11 +456,13 @@ def write_reports(records: list[AttendanceRecord], rejected: list[dict[str, str]
         "Low-hours threshold is configurable and defaults to 8 hours.",
     ]
     (output_dir / "summary_report.txt").write_text("\n".join(text) + "\n", encoding="utf-8")
+    # The interactive browser report is optional for direct run() callers and enabled by the CLI.
     if generate_browser_report:
         browser_report = output_dir / "attendance_report.html"
         write_browser_report(browser_report, records, rejected, summaries, exceptions)
         report_uri = browser_report.resolve().as_uri()
         logger.info("Browser report generated at %s", browser_report.resolve())
+        # Ask the operating system to open the generated local HTML report in a new browser tab.
         browser_opened = webbrowser.open(report_uri, new=2)
         if browser_opened:
             logger.info("Opened the report in your default browser.")
@@ -461,6 +483,7 @@ def run(input_path: Path, output_dir: Path, low_hours_threshold: float = DEFAULT
     # Connect input, validation, calculations, reports, console summary, and logging into one run.
     logger = configure_logging(output_dir)
     try:
+        # Reject impossible thresholds before reading data so exception checks use a sensible range.
         if low_hours_threshold < 0 or low_hours_threshold > 24:
             raise ValueError("low-hours threshold must be between 0 and 24")
         logger.info("Starting attendance analysis for %s", input_path)
@@ -475,6 +498,7 @@ def run(input_path: Path, output_dir: Path, low_hours_threshold: float = DEFAULT
                     len(records), len(rejected), len(summaries), len(exceptions))
         return 0
     except (OSError, ValueError, RuntimeError, csv.Error) as exc:
+        # Convert expected input/output problems into a logged message and a non-zero command result.
         logger.exception("Analysis failed: %s", exc)
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
@@ -495,6 +519,7 @@ def main() -> None:
     parser.add_argument("--low-hours-threshold", type=float, default=DEFAULT_LOW_HOURS,
                         help="Flag attended days below this number of hours (default: 8)")
     args = parser.parse_args()
+    # The command-line experience also creates and opens the interactive browser report.
     raise SystemExit(run(Path(args.input), Path(args.output_dir), args.low_hours_threshold,
                          generate_browser_report=True))
 
