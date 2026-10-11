@@ -1,6 +1,8 @@
-2026-10-09 14:52:07,850 | INFO | Starting attendance analysis for data\attendance_sample.csv
-2026-10-09 14:52:07,859 | WARNING | Rejected source row 12: date must use YYYY-MM-DD, DD/MM/YYYY, or MM/DD/YYYY
-2026-10-09 14:52:07,860 | WARNING | Rejected duplicate employee/date at source row 13
-2026-10-09 14:52:07,860 | WARNING | Rejected source row 14: name is required
-2026-10-09 14:52:07,866 | INFO | Wrote reports to C:\Users\shkoppul\Downloads\employee_attendance_analyzer\output
-2026-10-09 14:52:07,867 | INFO | Completed: 10 valid, 3 rejected, 3 employees, 4 exceptions
+2026-10-11 15:42:27,292 | INFO | Starting attendance analysis for data\attendance_sample.csv
+2026-10-11 15:42:27,302 | WARNING | Rejected source row 12: date must use YYYY-MM-DD, DD/MM/YYYY, or MM/DD/YYYY
+2026-10-11 15:42:27,302 | WARNING | Rejected duplicate employee/date at source row 13
+2026-10-11 15:42:27,303 | WARNING | Rejected source row 14: name is required
+2026-10-11 15:42:27,325 | INFO | Browser report generated at C:\Users\shkoppul\Downloads\employee_attendance_analyzer\output\attendance_report.html
+2026-10-11 15:42:27,590 | INFO | Opened the report in your default browser.
+2026-10-11 15:42:27,592 | INFO | Wrote reports to C:\Users\shkoppul\Downloads\employee_attendance_analyzer\output
+2026-10-11 15:42:27,592 | INFO | Completed: 11 valid, 3 rejected, 4 employees, 4 exceptions

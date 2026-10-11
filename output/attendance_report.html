@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <!-- Page setup: title, responsive viewport, and all report styling. -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Employee Attendance Report</title>
+
+    <style>
+        /* Base colors and page layout. */
+        :root {
+            font-family: "Segoe UI", Arial, sans-serif;
+            color: #172033;
+            background: #f3f6fb;
+        }
+
+        * { box-sizing: border-box; }
+        body { margin: 0; }
+
+        /* Report title banner. */
+        .page-header {
+            padding: 26px max(20px, calc((100% - 1150px) / 2));
+            color: white;
+            background: #183253;
+        }
+        .page-header h1 { margin: 0 0 5px; font-size: 27px; }
+        .page-header p { margin: 0; color: #d3dfed; }
+
+        /* Center the report and keep each section visually separate. */
+        .report-content {
+            max-width: 1150px;
+            margin: 22px auto;
+            padding: 0 18px;
+        }
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+        }
+        .card, .panel {
+            border: 1px solid #e1e8f0;
+            border-radius: 12px;
+            background: white;
+            box-shadow: 0 3px 12px #1328460a;
+        }
+        .card { padding: 16px; }
+        .card span { color: #66758a; font-size: 13px; }
+        .card strong { display: block; margin-top: 7px; font-size: 24px; }
+
+        /* Chart panels: status pie and employee attendance bars. */
+        .charts {
+            display: grid;
+            grid-template-columns: 1fr 1.2fr;
+            gap: 14px;
+            margin-top: 14px;
+        }
+        .panel { padding: 18px; }
+        .panel h2 { margin: 0 0 14px; font-size: 17px; }
+        .pie-layout { display: flex; align-items: center; gap: 12px; min-height: 220px; }
+        .pie-chart { width: 200px; height: 200px; max-width: 58%; }
+        .slice { cursor: pointer; stroke: white; stroke-width: 2; }
+        .slice:hover { opacity: .78; }
+        .legend { display: grid; gap: 9px; }
+        .legend button, .employee-bars button, .report-controls button {
+            font: inherit;
+            cursor: pointer;
+        }
+        .legend button {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            border: 0;
+            color: #29374a;
+            background: none;
+            text-align: left;
+            font-size: 13px;
+        }
+        .color-swatch { display: inline-block; width: 11px; height: 11px; border-radius: 3px; }
+        .employee-bars { display: grid; gap: 12px; }
+        .employee-bar {
+            display: grid;
+            grid-template-columns: minmax(90px, 1fr) 2fr 45px;
+            align-items: center;
+            gap: 9px;
+            font-size: 13px;
+        }
+        .employee-bars button {
+            overflow: hidden;
+            border: 0;
+            color: #29374a;
+            background: none;
+            text-align: left;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .bar-track { height: 11px; overflow: hidden; border-radius: 7px; background: #e8edf5; }
+        .bar-fill { height: 100%; border-radius: 7px; background: #527bec; }
+        .percentage { color: #526176; text-align: right; }
+
+        /* Filter buttons and the detailed records table. */
+        .details-panel { margin-top: 14px; padding: 0; overflow: hidden; }
+        .table-heading { padding: 17px 18px 12px; }
+        .table-heading h2 { margin: 0 0 12px; }
+        .report-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+        .report-controls button {
+            padding: 8px 11px;
+            border: 1px solid #d8e0ea;
+            border-radius: 7px;
+            color: #27364a;
+            background: white;
+            font-size: 13px;
+        }
+        .report-controls button.active, .report-controls button:hover {
+            border-color: #aabfff;
+            color: #234caa;
+            background: #eaf0ff;
+        }
+        .filter-note { margin: 10px 0 0; color: #66758a; font-size: 13px; }
+        .table-scroll { overflow: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th, td { padding: 10px 13px; border-top: 1px solid #edf0f5; text-align: left; white-space: nowrap; }
+        th { color: #526176; background: #f8fafc; }
+        td:last-child { min-width: 150px; white-space: normal; }
+        .empty-state { padding: 22px; color: #66758a; text-align: center; }
+
+        /* Report explanation and small-screen layout. */
+        .report-footer { max-width: 1150px; margin: 14px auto 25px; padding: 0 18px; color: #778499; font-size: 12px; }
+        @media (max-width: 720px) {
+            .charts { grid-template-columns: 1fr; }
+            .pie-layout { justify-content: center; }
+            .employee-bar { grid-template-columns: minmax(80px, 1fr) 1.4fr 42px; }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Page heading shown above the generated statistics. -->
+    <header class="page-header">
+        <h1>Employee Attendance Report</h1>
+        <p>Interactive report generated from the latest analysis</p>
+    </header>
+
+    <main class="report-content">
+        <!-- JavaScript fills these cards with totals from the latest run. -->
+        <section class="summary-cards" id="summary-cards" aria-label="Attendance summary"></section>
+
+        <!-- Charts: clicking a status or employee filters the table below. -->
+        <section class="charts" aria-label="Attendance charts">
+            <article class="panel">
+                <h2>Attendance by status</h2>
+                <div class="pie-layout">
+                    <svg class="pie-chart" id="status-pie" viewBox="0 0 220 220"
+                         aria-label="Click a pie section to view matching records"></svg>
+                    <div class="legend" id="status-legend"></div>
+                </div>
+            </article>
+
+            <article class="panel">
+                <h2>Attendance by employee</h2>
+                <div class="employee-bars" id="employee-bars"></div>
+            </article>
+        </section>
+
+        <!-- Table controls and matching attendance or rejected input records. -->
+        <section class="panel details-panel">
+            <div class="table-heading">
+                <h2 id="table-title">Attendance details</h2>
+                <div class="report-controls" aria-label="Filter report records">
+                    <button class="active" data-mode="all">All records</button>
+                    <button data-mode="present">Present records</button>
+                    <button data-mode="absent">Absent records</button>
+                    <button data-mode="leave">Leave records</button>
+                    <button data-mode="late">Late records</button>
+                    <button data-mode="exceptions">Exceptions records</button>
+                    <button data-mode="rejected">Rejected records</button>
+                </div>
+                <p class="filter-note" id="filter-note">Click a chart section or employee name to filter the table.</p>
+            </div>
+            <div class="table-scroll">
+                <table>
+                    <thead id="table-head"></thead>
+                    <tbody id="table-body"></tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <!-- Attendance percentage formula used by the analyzer. -->
+    <footer class="report-footer">
+        Present and Late count as full attendance credit, Half-Day as half credit, and Leave is excluded.
+    </footer>
+
+    <script>
+        // Python replaces this marker with the current run's report data.
+        const DATA = {"records": [{"employee_id": "E001", "name": "Asha Rao", "date": "2026-10-01", "department": "Engineering", "status": "PRESENT", "hours_worked": 8.0, "exception": ""}, {"employee_id": "E001", "name": "Asha Rao", "date": "2026-10-02", "department": "Engineering", "status": "LATE", "hours_worked": 7.42, "exception": "Late; Low hours (7.42 \u003c 8.00)"}, {"employee_id": "E001", "name": "Asha Rao", "date": "2026-10-03", "department": "Unspecified", "status": "ABSENT", "hours_worked": 0.0, "exception": "Absent"}, {"employee_id": "E001", "name": "Asha Rao", "date": "2026-10-04", "department": "Unspecified", "status": "LEAVE", "hours_worked": 0.0, "exception": ""}, {"employee_id": "E002", "name": "Rahul Das", "date": "2026-10-01", "department": "Support", "status": "PRESENT", "hours_worked": 7.5, "exception": "Low hours (7.50 \u003c 8.00)"}, {"employee_id": "E002", "name": "Rahul Das", "date": "2026-10-02", "department": "Support", "status": "HALF-DAY", "hours_worked": 4.0, "exception": "Low hours (4.00 \u003c 8.00)"}, {"employee_id": "E002", "name": "Rahul Das", "date": "2026-10-03", "department": "Support", "status": "PRESENT", "hours_worked": 9.0, "exception": ""}, {"employee_id": "E003", "name": "Meera Shah", "date": "2026-10-01", "department": "Finance", "status": "PRESENT", "hours_worked": 8.0, "exception": ""}, {"employee_id": "E003", "name": "Meera Shah", "date": "2026-10-02", "department": "Finance", "status": "PRESENT", "hours_worked": 8.0, "exception": ""}, {"employee_id": "E003", "name": "Meera Shah", "date": "2026-10-03", "department": "Finance", "status": "PRESENT", "hours_worked": 8.0, "exception": ""}, {"employee_id": "E006", "name": "Shiva Koppula", "date": "2026-10-11", "department": "Engineering", "status": "PRESENT", "hours_worked": 8.0, "exception": ""}], "rejected": [{"source_row": "12", "employee_id": "E004", "name": "Invalid Example", "date": "not-a-date", "status": "PRESENT", "rejection_reasons": "date must use YYYY-MM-DD, DD/MM/YYYY, or MM/DD/YYYY"}, {"source_row": "13", "employee_id": "E002", "name": "Rahul Das", "date": "2026-10-01", "status": "PRESENT", "rejection_reasons": "duplicate employee_id and date"}, {"source_row": "14", "employee_id": "E005", "name": "", "date": "2026-10-01", "status": "PRESENT", "rejection_reasons": "name is required"}], "summaries": [{"employee_id": "E001", "name": "Asha Rao", "department": "Unspecified", "records_count": 4, "eligible_days": 3, "attended_day_equivalent": 2.0, "attendance_percentage": 66.67, "total_working_hours": 15.42, "absent_days": 1, "late_days": 1, "half_days": 0}, {"employee_id": "E002", "name": "Rahul Das", "department": "Support", "records_count": 3, "eligible_days": 3, "attended_day_equivalent": 2.5, "attendance_percentage": 83.33, "total_working_hours": 20.5, "absent_days": 0, "late_days": 0, "half_days": 1}, {"employee_id": "E003", "name": "Meera Shah", "department": "Finance", "records_count": 3, "eligible_days": 3, "attended_day_equivalent": 3.0, "attendance_percentage": 100.0, "total_working_hours": 24.0, "absent_days": 0, "late_days": 0, "half_days": 0}, {"employee_id": "E006", "name": "Shiva Koppula", "department": "Engineering", "records_count": 1, "eligible_days": 1, "attended_day_equivalent": 1.0, "attendance_percentage": 100.0, "total_working_hours": 8.0, "absent_days": 0, "late_days": 0, "half_days": 0}], "stats": {"employees": 4, "valid": 11, "rejected": 3, "exceptions": 4, "average_attendance": 87.5, "total_hours": 67.92}};
+
+        // Consistent chart colors for each attendance status.
+        const STATUS_COLORS = {
+            PRESENT: "#3b9c78",
+            LATE: "#ef9f45",
+            "HALF-DAY": "#7189e8",
+            ABSENT: "#e26868",
+            LEAVE: "#9a78c4"
+        };
+
+        // Escape values before placing CSV data into table or label HTML.
+        function escapeHtml(value) {
+            return String(value ?? "").replace(/[&<>"']/g, character => ({
+                "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+            }[character]));
+        }
+
+        // Build the summary cards from counts and totals created by Python.
+        function renderSummaryCards() {
+            const stats = DATA.stats;
+            const cards = [
+                ["Employees", stats.employees],
+                ["Valid records", stats.valid],
+                ["Rejected rows", stats.rejected],
+                ["Exceptions", stats.exceptions],
+                ["Average attendance", Number(stats.average_attendance).toFixed(2) + "%"],
+                ["Total hours", Number(stats.total_hours).toFixed(2)]
+            ];
+            document.getElementById("summary-cards").innerHTML = cards
+                .map(([label, value]) => `<article class="card"><span>${label}</span><strong>${value}</strong></article>`)
+                .join("");
+        }
+
+        // Count valid records by status and render the clickable SVG donut chart.
+        const statusCounts = {};
+        DATA.records.forEach(record => {
+            statusCounts[record.status] = (statusCounts[record.status] || 0) + 1;
+        });
+        const statusEntries = Object.entries(statusCounts);
+        const statusTotal = DATA.records.length;
+        const pieChart = document.getElementById("status-pie");
+
+        function pointOnCircle(angle, radius) {
+            const radians = (angle - 90) * Math.PI / 180;
+            return [110 + radius * Math.cos(radians), 110 + radius * Math.sin(radians)];
+        }
+
+        function selectStatus(status) {
+            currentFilter = { mode: "status", value: status };
+            clearSelectedButtons();
+            renderDetails();
+        }
+
+        function renderStatusChart() {
+            if (!statusTotal) {
+                pieChart.innerHTML = '<text x="110" y="115" text-anchor="middle" fill="#66758a">No records</text>';
+                return;
+            }
+
+            let angle = 0;
+            statusEntries.forEach(([status, count]) => {
+                const start = angle;
+                const end = angle + count / statusTotal * 360;
+                let segment;
+
+                if (end - start >= 359.99) {
+                    segment = `<circle cx="110" cy="110" r="96" fill="${STATUS_COLORS[status] || "#94a3b8"}"
+                                      class="slice" data-status="${status}"/>`;
+                } else {
+                    const outerStart = pointOnCircle(start, 96);
+                    const outerEnd = pointOnCircle(end, 96);
+                    const innerEnd = pointOnCircle(end, 48);
+                    const innerStart = pointOnCircle(start, 48);
+                    const largeArc = end - start > 180 ? 1 : 0;
+                    const path = `M ${outerStart[0]} ${outerStart[1]} A 96 96 0 ${largeArc} 1 ${outerEnd[0]} ${outerEnd[1]} ` +
+                        `L ${innerEnd[0]} ${innerEnd[1]} A 48 48 0 ${largeArc} 0 ${innerStart[0]} ${innerStart[1]} Z`;
+                    segment = `<path class="slice" data-status="${status}" fill="${STATUS_COLORS[status] || "#94a3b8"}" d="${path}"/>`;
+                }
+
+                pieChart.insertAdjacentHTML("beforeend", segment);
+                angle = end;
+            });
+
+            // Keep the single-status chart looking like the same donut chart.
+            if (statusEntries.length === 1) {
+                pieChart.insertAdjacentHTML("beforeend", '<circle cx="110" cy="110" r="48" fill="white" pointer-events="none"/>');
+            }
+            pieChart.insertAdjacentHTML("beforeend",
+                `<text x="110" y="105" text-anchor="middle" font-size="23" font-weight="700" fill="#172033" pointer-events="none">${statusTotal}</text>` +
+                '<text x="110" y="127" text-anchor="middle" font-size="12" fill="#66758a" pointer-events="none">records</text>');
+
+            pieChart.querySelectorAll(".slice").forEach(segment => {
+                segment.addEventListener("click", () => selectStatus(segment.dataset.status));
+            });
+            renderStatusLegend();
+        }
+
+        // Render clickable labels next to the status chart.
+        function renderStatusLegend() {
+            const legend = document.getElementById("status-legend");
+            legend.innerHTML = statusEntries.map(([status, count], index) =>
+                `<button data-index="${index}"><i class="color-swatch" style="background:${STATUS_COLORS[status] || "#94a3b8"}"></i>${escapeHtml(status)} (${count})</button>`
+            ).join("");
+            legend.querySelectorAll("button").forEach((button, index) => {
+                button.addEventListener("click", () => selectStatus(statusEntries[index][0]));
+            });
+        }
+
+        // Render employee attendance bars; clicking a name filters that employee's rows.
+        function renderEmployeeBars() {
+            const container = document.getElementById("employee-bars");
+            if (!DATA.summaries.length) {
+                container.innerHTML = '<p class="empty-state">No employee records</p>';
+                return;
+            }
+
+            container.innerHTML = DATA.summaries.map((employee, index) => {
+                const percentage = Math.max(0, Math.min(100, Number(employee.attendance_percentage)));
+                return `<div class="employee-bar">
+                    <button data-index="${index}">${escapeHtml(employee.name)}</button>
+                    <div class="bar-track"><div class="bar-fill" style="width:${percentage}%"></div></div>
+                    <span class="percentage">${Number(employee.attendance_percentage).toFixed(1)}%</span>
+                </div>`;
+            }).join("");
+
+            container.querySelectorAll("button").forEach((button, index) => {
+                button.addEventListener("click", () => {
+                    currentFilter = { mode: "employee", value: DATA.summaries[index].employee_id };
+                    clearSelectedButtons();
+                    renderDetails();
+                });
+            });
+        }
+
+        // Current table filter: all records, one status, one employee, exceptions, or rejected rows.
+        let currentFilter = { mode: "all", value: null };
+
+        function clearSelectedButtons() {
+            document.querySelectorAll(".report-controls button").forEach(button => button.classList.remove("active"));
+        }
+
+        // Render a table with escaped cell values; supports accepted and rejected row formats.
+        function renderTable(headers, rows) {
+            document.getElementById("table-head").innerHTML = `<tr>${headers.map(header => `<th>${header}</th>`).join("")}</tr>`;
+            document.getElementById("table-body").innerHTML = rows.length
+                ? rows.map(row => `<tr>${row.map(value => `<td>${escapeHtml(value) || "—"}</td>`).join("")}</tr>`).join("")
+                : `<tr><td class="empty-state" colspan="${headers.length}">No matching records</td></tr>`;
+        }
+
+        // Apply the selected filter and refresh the detail table and its heading.
+        function renderDetails() {
+            let records = DATA.records;
+            let title = "Attendance details";
+            let note = "Click a chart section or employee name to filter the table.";
+
+            if (currentFilter.mode === "rejected") {
+                title = "Rejected input rows";
+                note = "Rows rejected during validation, with their rejection reason.";
+                renderTable(
+                    ["Source row", "Employee ID", "Name", "Date", "Status", "Reason"],
+                    DATA.rejected.map(row => [row.source_row, row.employee_id, row.name, row.date, row.status, row.rejection_reasons])
+                );
+            } else {
+                if (currentFilter.mode === "exceptions") {
+                    records = records.filter(record => record.exception);
+                    title = "Attendance exceptions";
+                    note = "Absent, late, and low-hours attendance records.";
+                } else if (currentFilter.mode === "absent" || currentFilter.mode === "leave" || currentFilter.mode === "late") {
+                    const status = currentFilter.mode.toUpperCase();
+                    records = records.filter(record => record.status === status);
+                    title = status + " records";
+                    note = "All accepted attendance records with status " + status + ".";
+                } else if (currentFilter.mode === "status") {
+                    records = records.filter(record => record.status === currentFilter.value);
+                    title = currentFilter.value + " attendance details";
+                    note = "Records with status " + currentFilter.value + ".";
+                } else if (currentFilter.mode === "employee") {
+                    records = records.filter(record => record.employee_id === currentFilter.value);
+                    const employee = DATA.summaries.find(row => row.employee_id === currentFilter.value);
+                    title = (employee ? employee.name : currentFilter.value) + " attendance details";
+                    note = "All attendance records for this employee.";
+                }
+
+                renderTable(
+                    ["Employee ID", "Name", "Date", "Department", "Status", "Hours", "Exception"],
+                    records.map(record => [record.employee_id, record.name, record.date, record.department,
+                        record.status, Number(record.hours_worked).toFixed(2), record.exception])
+                );
+            }
+
+            document.getElementById("table-title").textContent = title;
+            document.getElementById("filter-note").textContent = note;
+        }
+
+        // Toolbar buttons choose a table view and mark the active filter.
+        document.querySelectorAll(".report-controls button").forEach(button => {
+            button.addEventListener("click", () => {
+                currentFilter = { mode: button.dataset.mode, value: null };
+                document.querySelectorAll(".report-controls button").forEach(item => {
+                    item.classList.toggle("active", item === button);
+                });
+                renderDetails();
+            });
+        });
+
+        // Start the report with summary data, charts, and all accepted attendance rows.
+        renderSummaryCards();
+        renderStatusChart();
+        renderEmployeeBars();
+        renderDetails();
+    </script>
+</body>
+</html>

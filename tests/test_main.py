@@ -58,6 +58,19 @@ class AttendanceAnalyzerTests(unittest.TestCase):
         self.assertEqual(len(rejected), 1)
         self.assertIn("cannot have positive working hours", rejected[0]["rejection_reasons"])
 
+    def test_absent_and_leave_with_reversed_times_are_rejected(self):
+        rows = [
+            {"employee_id": "E1", "name": "A", "date": "2026-10-01",
+             "status": "Absent", "hours_worked": "", "login_time": "09:00", "logout_time": "08:00"},
+            {"employee_id": "E2", "name": "B", "date": "2026-10-01",
+             "status": "Leave", "hours_worked": "", "login_time": "09:00", "logout_time": "08:00"},
+        ]
+        accepted, rejected = validate_and_clean(rows, logging.getLogger("test"))
+        self.assertEqual(accepted, [])
+        self.assertEqual(len(rejected), 2)
+        for row in rejected:
+            self.assertIn("logout_time must be later than login_time", row["rejection_reasons"])
+
     def test_blank_name_is_rejected(self):
         rows = [{"employee_id": "E1", "name": " ", "date": "2026-10-01",
                  "status": "Present", "hours_worked": "8"}]
@@ -81,6 +94,17 @@ class AttendanceAnalyzerTests(unittest.TestCase):
         self.assertIn("Late", exceptions[0]["exception"])
         self.assertIn("Low hours", exceptions[0]["exception"])
 
+    def test_present_record_metrics(self):
+        records = [
+            AttendanceRecord("E1", "A", date(2026, 10, 1), "PRESENT", "IT", 8, None, None, 2),
+        ]
+        summaries, exceptions = calculate_metrics(records)
+        self.assertEqual(summaries[0]["records_count"], 1)
+        self.assertEqual(summaries[0]["attended_day_equivalent"], 1.0)
+        self.assertEqual(summaries[0]["attendance_percentage"], 100.0)
+        self.assertEqual(summaries[0]["total_working_hours"], 8.0)
+        self.assertEqual(exceptions, [])
+
     def test_end_to_end_creates_outputs(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -94,6 +118,7 @@ class AttendanceAnalyzerTests(unittest.TestCase):
                          "employee_summary.csv","attendance_exceptions.csv",
                          "summary_report.txt","application.log"):
                 self.assertTrue((out / name).exists(), name)
+            self.assertFalse((out / "attendance_report.html").exists())
 
 
 if __name__ == "__main__":

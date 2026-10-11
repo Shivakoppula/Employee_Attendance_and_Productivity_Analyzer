@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import logging
 import sys
+import webbrowser
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, time
@@ -201,6 +203,8 @@ def validate_and_clean(rows: list[dict[str, str]], logger: logging.Logger
                     errors.append("logout_time must be later than login_time; overnight shifts are not supported")
             elif (login is None) != (logout is None):
                 errors.append("login_time and logout_time must both be provided")
+            elif status in {"ABSENT", "LEAVE"} and login is not None and logout is not None and logout <= login:
+                errors.append("logout_time must be later than login_time; overnight shifts are not supported")
 
         if hours is not None and hours > 24:
             errors.append("hours_worked cannot exceed 24")
@@ -347,9 +351,47 @@ def write_csv(path: Path, rows: list[dict[str, Any]], fieldnames: list[str]) -> 
         writer.writerows(rows)
 
 
+def write_browser_report(path: Path, records: list[AttendanceRecord], rejected: list[dict[str, str]],
+                         summaries: list[dict[str, Any]], exceptions: list[dict[str, Any]]) -> None:
+    """Create a self-contained interactive HTML report for the latest run."""
+    exception_by_record = {(row["employee_id"], row["date"]): row["exception"] for row in exceptions}
+    detail_rows = [{
+        "employee_id": row.employee_id,
+        "name": row.name,
+        "date": row.work_date.isoformat(),
+        "department": row.department,
+        "status": row.status,
+        "hours_worked": round(row.hours_worked, 2),
+        "exception": exception_by_record.get((row.employee_id, row.work_date.isoformat()), ""),
+    } for row in records]
+    average_attendance = (sum(row["attendance_percentage"] for row in summaries) / len(summaries)
+                          if summaries else 0.0)
+    data = {
+        "records": detail_rows,
+        "rejected": rejected,
+        "summaries": summaries,
+        "stats": {
+            "employees": len(summaries),
+            "valid": len(records),
+            "rejected": len(rejected),
+            "exceptions": len(exceptions),
+            "average_attendance": round(average_attendance, 2),
+            "total_hours": round(sum(row.hours_worked for row in records), 2),
+        },
+    }
+    # Escape '<' so CSV text cannot end the embedded script tag.
+    report_data = json.dumps(data, ensure_ascii=False).replace("<", "\\u003c")
+    template_path = Path(__file__).resolve().parent / "report.html"
+    template = template_path.read_text(encoding="utf-8")
+    document = template.replace("__REPORT_DATA__", report_data)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(document, encoding="utf-8")
+
+
 def write_reports(records: list[AttendanceRecord], rejected: list[dict[str, str]],
                   summaries: list[dict[str, Any]], exceptions: list[dict[str, Any]],
-                  output_dir: Path, logger: logging.Logger) -> None:
+                  output_dir: Path, logger: logging.Logger,
+                  generate_browser_report: bool = False) -> None:
     """Write cleaned data, rejected records, employee summary, and exception report."""
     # Functional requirement 4: generate the summary report and output files.
     # Normalize accepted records before exporting, so calculated hours and
@@ -394,10 +436,27 @@ def write_reports(records: list[AttendanceRecord], rejected: list[dict[str, str]
         "Low-hours threshold is configurable and defaults to 8 hours.",
     ]
     (output_dir / "summary_report.txt").write_text("\n".join(text) + "\n", encoding="utf-8")
+    if generate_browser_report:
+        browser_report = output_dir / "attendance_report.html"
+        write_browser_report(browser_report, records, rejected, summaries, exceptions)
+        report_uri = browser_report.resolve().as_uri()
+        logger.info("Browser report generated at %s", browser_report.resolve())
+        browser_opened = webbrowser.open(report_uri, new=2)
+        if browser_opened:
+            logger.info("Opened the report in your default browser.")
+        else:
+            logger.warning("Could not open a browser automatically. Open this report: %s", report_uri)
+        if sys.stdout.isatty():
+            # OSC 8 makes the label itself clickable in terminals that support hyperlinks.
+            print(f"\x1b]8;;{report_uri}\x1b\\Open attendance report in browser\x1b]8;;\x1b\\")
+            print("Ctrl+click the report link above if a normal click does not open it.")
+        else:
+            print(f"Open attendance report in browser: {report_uri}")
     logger.info("Wrote reports to %s", output_dir.resolve())
 
 
-def run(input_path: Path, output_dir: Path, low_hours_threshold: float = DEFAULT_LOW_HOURS) -> int:
+def run(input_path: Path, output_dir: Path, low_hours_threshold: float = DEFAULT_LOW_HOURS,
+        generate_browser_report: bool = False) -> int:
     """Execute the end-to-end pipeline. Return non-zero for input/pipeline failures."""
     # Connect input, validation, calculations, reports, console summary, and logging into one run.
     logger = configure_logging(output_dir)
@@ -410,7 +469,8 @@ def run(input_path: Path, output_dir: Path, low_hours_threshold: float = DEFAULT
         rows = read_input(input_path)
         records, rejected = validate_and_clean(rows, logger)
         summaries, exceptions = calculate_metrics(records, low_hours_threshold)
-        write_reports(records, rejected, summaries, exceptions, output_dir, logger)
+        write_reports(records, rejected, summaries, exceptions, output_dir, logger,
+                      generate_browser_report=generate_browser_report)
         logger.info("Completed: %s valid, %s rejected, %s employees, %s exceptions",
                     len(records), len(rejected), len(summaries), len(exceptions))
         return 0
@@ -435,7 +495,8 @@ def main() -> None:
     parser.add_argument("--low-hours-threshold", type=float, default=DEFAULT_LOW_HOURS,
                         help="Flag attended days below this number of hours (default: 8)")
     args = parser.parse_args()
-    raise SystemExit(run(Path(args.input), Path(args.output_dir), args.low_hours_threshold))
+    raise SystemExit(run(Path(args.input), Path(args.output_dir), args.low_hours_threshold,
+                         generate_browser_report=True))
 
 
 if __name__ == "__main__":
