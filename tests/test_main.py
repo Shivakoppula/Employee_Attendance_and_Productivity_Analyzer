@@ -1,10 +1,13 @@
+# unittest runs checks automatically; tempfile provides isolated files for the pipeline test.
 import csv
 import tempfile
 import unittest
+# datetime date objects let tests compare parsed values without comparing strings.
 from datetime import date
 from pathlib import Path
 
 import sys
+# Add the project directory so unittest can import the application module from this test file.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from main import (
@@ -37,6 +40,7 @@ class AttendanceAnalyzerTests(unittest.TestCase):
 
     # The first valid row wins a duplicate date; malformed dates are also rejected.
     def test_duplicate_and_invalid_rows_rejected(self):
+        # Lists and dictionaries mirror the row structure returned by read_input.
         rows = [
             {"employee_id":"E1","name":"A","date":"2026-10-01","status":"Present","hours_worked":"8"},
             {"employee_id":"E1","name":"A","date":"2026-10-01","status":"Present","hours_worked":"8"},
@@ -119,6 +123,7 @@ class AttendanceAnalyzerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             inp = root / "in.csv"
+            # File handling: create a temporary CSV for run() to read without changing the sample input.
             inp.write_text(
                 "employee_id,name,date,status,hours_worked\nE1,A,2026-10-01,Present,8\nE1,A,2026-10-02,Absent,0\n", encoding="utf-8"
             )

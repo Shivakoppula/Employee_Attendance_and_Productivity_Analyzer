@@ -205,7 +205,6 @@
 
         // Escape values before placing CSV data into table or label HTML.
         function escapeHtml(value) {
-            // Replace HTML-significant characters so employee names and input text render as text, not markup.
             return String(value ?? "").replace(/[&<>"']/g, character => ({
                 "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
             }[character]));
@@ -236,21 +235,18 @@
         const statusTotal = DATA.records.length;
         const pieChart = document.getElementById("status-pie");
 
-        // Convert a chart angle and radius into SVG coordinates around the chart's center.
         function pointOnCircle(angle, radius) {
             const radians = (angle - 90) * Math.PI / 180;
             return [110 + radius * Math.cos(radians), 110 + radius * Math.sin(radians)];
         }
 
         function selectStatus(status) {
-            // Store the selection in one shared filter object, then refresh the detail table.
             currentFilter = { mode: "status", value: status };
             clearSelectedButtons();
             renderDetails();
         }
 
         function renderStatusChart() {
-            // Avoid dividing by zero when the input has no accepted attendance rows.
             if (!statusTotal) {
                 pieChart.innerHTML = '<text x="110" y="115" text-anchor="middle" fill="#66758a">No records</text>';
                 return;
@@ -258,7 +254,6 @@
 
             let angle = 0;
             statusEntries.forEach(([status, count]) => {
-                // Give each status a pie slice proportional to its share of accepted records.
                 const start = angle;
                 const end = angle + count / statusTotal * 360;
                 let segment;
@@ -267,7 +262,6 @@
                     segment = `<circle cx="110" cy="110" r="96" fill="${STATUS_COLORS[status] || "#94a3b8"}"
                                       class="slice" data-status="${status}"/>`;
                 } else {
-                    // Draw a donut wedge between the outer and inner radii using an SVG path.
                     const outerStart = pointOnCircle(start, 96);
                     const outerEnd = pointOnCircle(end, 96);
                     const innerEnd = pointOnCircle(end, 48);
@@ -291,7 +285,6 @@
                 '<text x="110" y="127" text-anchor="middle" font-size="12" fill="#66758a" pointer-events="none">records</text>');
 
             pieChart.querySelectorAll(".slice").forEach(segment => {
-                // Clicking a wedge filters the record table to that status.
                 segment.addEventListener("click", () => selectStatus(segment.dataset.status));
             });
             renderStatusLegend();
@@ -304,7 +297,6 @@
                 `<button data-index="${index}"><i class="color-swatch" style="background:${STATUS_COLORS[status] || "#94a3b8"}"></i>${escapeHtml(status)} (${count})</button>`
             ).join("");
             legend.querySelectorAll("button").forEach((button, index) => {
-                // Legend buttons use the same status filter as their matching chart slice.
                 button.addEventListener("click", () => selectStatus(statusEntries[index][0]));
             });
         }
@@ -328,7 +320,6 @@
 
             container.querySelectorAll("button").forEach((button, index) => {
                 button.addEventListener("click", () => {
-                    // Filter by the stable employee ID, not by a name that may be shared.
                     currentFilter = { mode: "employee", value: DATA.summaries[index].employee_id };
                     clearSelectedButtons();
                     renderDetails();
@@ -340,13 +331,11 @@
         let currentFilter = { mode: "all", value: null };
 
         function clearSelectedButtons() {
-            // Remove stale active styling when a chart selection changes the filter.
             document.querySelectorAll(".report-controls button").forEach(button => button.classList.remove("active"));
         }
 
         // Render a table with escaped cell values; supports accepted and rejected row formats.
         function renderTable(headers, rows) {
-            // Escape every cell value; show a friendly empty row if the current filter has no matches.
             document.getElementById("table-head").innerHTML = `<tr>${headers.map(header => `<th>${header}</th>`).join("")}</tr>`;
             document.getElementById("table-body").innerHTML = rows.length
                 ? rows.map(row => `<tr>${row.map(value => `<td>${escapeHtml(value) || "—"}</td>`).join("")}</tr>`).join("")
@@ -360,7 +349,6 @@
             let note = "Click a chart section or employee name to filter the table.";
 
             if (currentFilter.mode === "rejected") {
-                // Rejected rows have different fields from accepted rows, so render their own columns.
                 title = "Rejected input rows";
                 note = "Rows rejected during validation, with their rejection reason.";
                 renderTable(
@@ -368,7 +356,6 @@
                     DATA.rejected.map(row => [row.source_row, row.employee_id, row.name, row.date, row.status, row.rejection_reasons])
                 );
             } else {
-                // For accepted records, narrow the list according to the selected toolbar/chart filter.
                 if (currentFilter.mode === "exceptions") {
                     records = records.filter(record => record.exception);
                     title = "Attendance exceptions";
@@ -403,7 +390,6 @@
         // Toolbar buttons choose a table view and mark the active filter.
         document.querySelectorAll(".report-controls button").forEach(button => {
             button.addEventListener("click", () => {
-                // Toolbar filters clear chart-specific selections and mark the chosen view as active.
                 currentFilter = { mode: button.dataset.mode, value: null };
                 document.querySelectorAll(".report-controls button").forEach(item => {
                     item.classList.toggle("active", item === button);
