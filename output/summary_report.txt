@@ -1,12 +1,12 @@
 EMPLOYEE ATTENDANCE & PRODUCTIVITY SUMMARY
 ============================================
-Valid attendance records: 13
+Valid attendance records: 14
 Rejected records: 3
-Employees analyzed: 6
-Attendance exceptions: 4
+Employees analyzed: 7
+Attendance exceptions: 5
 Overtime records (more than 8 hours): 2
-Average employee attendance percentage: 75.00%
-Total working hours: 77.92
+Average employee attendance percentage: 71.43%
+Total working hours: 81.92
 
 Attendance percentage uses present + late + half-day credit (0.5), divided by eligible records.
 Approved leave records are excluded from eligible days.
