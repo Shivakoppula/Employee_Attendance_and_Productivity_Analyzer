@@ -1,5 +1,6 @@
 # unittest runs checks automatically; tempfile provides isolated files for the pipeline test.
 import csv
+import json
 import tempfile
 import unittest
 # datetime date objects let tests compare parsed values without comparing strings.
@@ -12,7 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from main import (
     AttendanceRecord, attendance_credit, calculate_metrics, parse_date,
-    parse_time, parse_nonnegative_float, read_input, validate_and_clean, run
+    parse_time, parse_nonnegative_float, read_input, validate_and_clean, run,
+    write_browser_report, write_reports
 )
 import logging
 
@@ -118,6 +120,57 @@ class AttendanceAnalyzerTests(unittest.TestCase):
         self.assertEqual(summaries[0]["total_working_hours"], 8.0)
         self.assertEqual(exceptions, [])
 
+    # More than eight hours is overtime; exactly eight hours is not.
+    def test_overtime_export_and_browser_report(self):
+        records = [
+            AttendanceRecord("E1", "Present at limit", date(2026, 10, 1), "PRESENT", "IT", 8.0, None, None, 2),
+            AttendanceRecord("E2", "Present overtime", date(2026, 10, 1), "PRESENT", "IT", 8.5, None, None, 3),
+            AttendanceRecord("E3", "Late overtime", date(2026, 10, 1), "LATE", "IT", 9.0, None, None, 4),
+            AttendanceRecord("E4", "Half day", date(2026, 10, 1), "HALF-DAY", "IT", 4.0, None, None, 5),
+            AttendanceRecord("E5", "Absent", date(2026, 10, 1), "ABSENT", "IT", 0.0, None, None, 6),
+            AttendanceRecord("E6", "On leave", date(2026, 10, 1), "LEAVE", "IT", 0.0, None, None, 7),
+        ]
+        summaries, exceptions = calculate_metrics(records)
+
+        with tempfile.TemporaryDirectory() as temp:
+            output_dir = Path(temp)
+            logger = logging.getLogger("overtime_test")
+            write_reports(records, [], summaries, exceptions, output_dir, logger)
+
+            with (output_dir / "overtime_records.csv").open(newline="", encoding="utf-8") as handle:
+                overtime_rows = list(csv.DictReader(handle))
+            self.assertEqual([row["employee_id"] for row in overtime_rows], ["E2", "E3"])
+            self.assertIn("Overtime records (more than 8 hours): 2",
+                          (output_dir / "summary_report.txt").read_text(encoding="utf-8"))
+
+            browser_path = output_dir / "attendance_report.html"
+            write_browser_report(browser_path, records, [], summaries, exceptions)
+            html = browser_path.read_text(encoding="utf-8")
+            embedded_data = html.split("const DATA = ", 1)[1].split(";\n", 1)[0]
+            report_data = json.loads(embedded_data)
+            overtime_flags = {row["employee_id"]: row["overtime"] for row in report_data["records"]}
+            self.assertEqual(report_data["overtime_threshold"], 8.0)
+            self.assertEqual(overtime_flags["E1"], False)
+            self.assertEqual(overtime_flags["E2"], True)
+            self.assertEqual(overtime_flags["E3"], True)
+            self.assertEqual(overtime_flags["E5"], False)
+            self.assertEqual(overtime_flags["E6"], False)
+            self.assertIn('data-mode="overtime"', html)
+
+    # Absent and leave rows cannot be counted as overtime when positive hours are supplied.
+    def test_absent_and_leave_with_positive_hours_are_rejected(self):
+        rows = [
+            {"employee_id": "E1", "name": "A", "date": "2026-10-01",
+             "status": "Absent", "hours_worked": "9"},
+            {"employee_id": "E2", "name": "B", "date": "2026-10-01",
+             "status": "Leave", "hours_worked": "9"},
+        ]
+        accepted, rejected = validate_and_clean(rows, logging.getLogger("test"))
+        self.assertEqual(accepted, [])
+        self.assertEqual(len(rejected), 2)
+        for row in rejected:
+            self.assertIn("cannot have positive working hours", row["rejection_reasons"])
+
     # Exercise the complete read-clean-calculate-write pipeline using a temporary CSV.
     def test_end_to_end_creates_outputs(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -131,7 +184,7 @@ class AttendanceAnalyzerTests(unittest.TestCase):
             self.assertEqual(run(inp, out), 0)
             for name in ("cleaned_attendance.csv","rejected_records.csv",
                          "employee_summary.csv","attendance_exceptions.csv",
-                         "summary_report.txt","application.log"):
+                         "overtime_records.csv","summary_report.txt","application.log"):
                 self.assertTrue((out / name).exists(), name)
             # run() does not open the optional browser report unless requested.
             self.assertFalse((out / "attendance_report.html").exists())

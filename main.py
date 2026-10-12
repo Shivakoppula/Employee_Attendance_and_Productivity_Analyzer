@@ -22,6 +22,7 @@ from typing import Any
 REQUIRED_COLUMNS = {"employee_id", "name", "date", "status"}
 VALID_STATUSES = {"PRESENT", "ABSENT", "LATE", "HALF-DAY", "LEAVE"}
 DEFAULT_LOW_HOURS = 8.0
+OVERTIME_HOURS_THRESHOLD = 8.0
 TIME_FORMATS = ("%H:%M", "%H:%M:%S")
 
 
@@ -402,6 +403,7 @@ def write_browser_report(path: Path, records: list[AttendanceRecord], rejected: 
         "department": row.department,
         "status": row.status,
         "hours_worked": round(row.hours_worked, 2),
+        "overtime": row.hours_worked > OVERTIME_HOURS_THRESHOLD,
         "exception": exception_by_record.get((row.employee_id, row.work_date.isoformat()), ""),
     } for row in records]
     average_attendance = (sum(row["attendance_percentage"] for row in summaries) / len(summaries)
@@ -409,6 +411,7 @@ def write_browser_report(path: Path, records: list[AttendanceRecord], rejected: 
     # Pass only the data the browser view needs: accepted rows, rejected rows, summaries, and totals.
     data = {
         "records": detail_rows,
+        "overtime_threshold": OVERTIME_HOURS_THRESHOLD,
         "rejected": rejected,
         "summaries": summaries,
         "stats": {
@@ -446,7 +449,12 @@ def write_reports(records: list[AttendanceRecord], rejected: list[dict[str, str]
         "logout_time": r.logout_time.strftime("%H:%M:%S") if r.logout_time else "",
         "hours_worked": round(r.hours_worked, 2),
     } for r in records]
+    # Keep overtime records in a separate export when the original hours exceed eight.
+    overtime_rows = [row for row, record in zip(cleaned_rows, records)
+                     if record.hours_worked > OVERTIME_HOURS_THRESHOLD]
     write_csv(output_dir / "cleaned_attendance.csv", cleaned_rows,
+              ["employee_id", "name", "date", "status", "department", "login_time", "logout_time", "hours_worked"])
+    write_csv(output_dir / "overtime_records.csv", overtime_rows,
               ["employee_id", "name", "date", "status", "department", "login_time", "logout_time", "hours_worked"])
     write_csv(output_dir / "rejected_records.csv", rejected,
               ["source_row", "employee_id", "name", "date", "status", "rejection_reasons"])
@@ -471,6 +479,7 @@ def write_reports(records: list[AttendanceRecord], rejected: list[dict[str, str]
         f"Rejected records: {len(rejected)}",
         f"Employees analyzed: {len(summaries)}",
         f"Attendance exceptions: {len(exceptions)}",
+        f"Overtime records (more than {OVERTIME_HOURS_THRESHOLD:.0f} hours): {len(overtime_rows)}",
         f"Average employee attendance percentage: {average_attendance:.2f}%",
         f"Total working hours: {total_hours:.2f}",
         "",

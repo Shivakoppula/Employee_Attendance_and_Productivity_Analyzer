@@ -171,6 +171,7 @@
                     <button data-mode="absent">Absent records</button>
                     <button data-mode="leave">Leave records</button>
                     <button data-mode="late">Late records</button>
+                    <button data-mode="overtime">Overtime records (&gt;8h)</button>
                     <button data-mode="exceptions">Exceptions records</button>
                     <button data-mode="rejected">Rejected records</button>
                 </div>
@@ -327,7 +328,7 @@
             });
         }
 
-        // Current table filter: all records, one status, one employee, exceptions, or rejected rows.
+        // Current table filter: all records, one status, overtime, one employee, exceptions, or rejected rows.
         let currentFilter = { mode: "all", value: null };
 
         function clearSelectedButtons() {
@@ -356,7 +357,11 @@
                     DATA.rejected.map(row => [row.source_row, row.employee_id, row.name, row.date, row.status, row.rejection_reasons])
                 );
             } else {
-                if (currentFilter.mode === "exceptions") {
+                if (currentFilter.mode === "overtime") {
+                    records = records.filter(record => record.overtime);
+                    title = "Overtime records (more than " + DATA.overtime_threshold + " hours)";
+                    note = "Accepted attendance records with more than " + DATA.overtime_threshold + " working hours.";
+                } else if (currentFilter.mode === "exceptions") {
                     records = records.filter(record => record.exception);
                     title = "Attendance exceptions";
                     note = "Absent, late, and low-hours attendance records.";
