@@ -47,10 +47,10 @@
         .card span { color: #66758a; font-size: 13px; }
         .card strong { display: block; margin-top: 7px; font-size: 24px; }
 
-        /* Chart panels: status pie and employee attendance bars. */
+        /* Chart panels: status, overtime, and employee attendance summaries. */
         .charts {
             display: grid;
-            grid-template-columns: 1fr 1.2fr;
+            grid-template-columns: 1fr 1fr 1.2fr;
             gap: 14px;
             margin-top: 14px;
         }
@@ -125,8 +125,13 @@
 
         /* Report explanation and small-screen layout. */
         .report-footer { max-width: 1150px; margin: 14px auto 25px; padding: 0 18px; color: #778499; font-size: 12px; }
+        @media (max-width: 900px) {
+            .charts { grid-template-columns: 1fr 1fr; }
+            .charts article:last-child { grid-column: 1 / -1; }
+        }
         @media (max-width: 720px) {
             .charts { grid-template-columns: 1fr; }
+            .charts article:last-child { grid-column: auto; }
             .pie-layout { justify-content: center; }
             .employee-bar { grid-template-columns: minmax(80px, 1fr) 1.4fr 42px; }
         }
@@ -152,6 +157,15 @@
                     <svg class="pie-chart" id="status-pie" viewBox="0 0 220 220"
                          aria-label="Click a pie section to view matching records"></svg>
                     <div class="legend" id="status-legend"></div>
+                </div>
+            </article>
+
+            <article class="panel">
+                <h2>Overtime vs 8 hours or less</h2>
+                <div class="pie-layout">
+                    <svg class="pie-chart" id="overtime-pie" viewBox="0 0 220 220"
+                         aria-label="Click a pie section to view overtime or at-or-below-threshold records"></svg>
+                    <div class="legend" id="overtime-legend"></div>
                 </div>
             </article>
 
@@ -245,6 +259,81 @@
             currentFilter = { mode: "status", value: status };
             clearSelectedButtons();
             renderDetails();
+        }
+
+        // Overtime and at-or-below-threshold slices filter the records table by hours worked.
+        const HOURS_COLORS = { within_limit: "#527bec", overtime: "#ef9f45" };
+        const HOURS_ENTRIES = [
+            ["within_limit", DATA.records.filter(record => !record.overtime).length],
+            ["overtime", DATA.records.filter(record => record.overtime).length]
+        ];
+        const overtimePie = document.getElementById("overtime-pie");
+
+        function selectHoursCategory(category) {
+            currentFilter = { mode: category, value: null };
+            clearSelectedButtons();
+            renderDetails();
+        }
+
+        function renderOvertimeChart() {
+            const total = DATA.records.length;
+            if (!total) {
+                overtimePie.innerHTML = '<text x="110" y="115" text-anchor="middle" fill="#66758a">No records</text>';
+                renderOvertimeLegend();
+                return;
+            }
+
+            let angle = 0;
+            HOURS_ENTRIES.forEach(([category, count]) => {
+                if (!count) return;
+                const start = angle;
+                const end = angle + count / total * 360;
+                let segment;
+
+                if (end - start >= 359.99) {
+                    segment = `<circle cx="110" cy="110" r="96" fill="${HOURS_COLORS[category]}" ` +
+                        `class="slice" data-hours-category="${category}"/>`;
+                } else {
+                    const outerStart = pointOnCircle(start, 96);
+                    const outerEnd = pointOnCircle(end, 96);
+                    const innerEnd = pointOnCircle(end, 48);
+                    const innerStart = pointOnCircle(start, 48);
+                    const largeArc = end - start > 180 ? 1 : 0;
+                    const path = `M ${outerStart[0]} ${outerStart[1]} A 96 96 0 ${largeArc} 1 ${outerEnd[0]} ${outerEnd[1]} ` +
+                        `L ${innerEnd[0]} ${innerEnd[1]} A 48 48 0 ${largeArc} 0 ${innerStart[0]} ${innerStart[1]} Z`;
+                    segment = `<path class="slice" data-hours-category="${category}" ` +
+                        `fill="${HOURS_COLORS[category]}" d="${path}"/>`;
+                }
+
+                overtimePie.insertAdjacentHTML("beforeend", segment);
+                angle = end;
+            });
+
+            if (HOURS_ENTRIES.filter(([, count]) => count > 0).length === 1) {
+                overtimePie.insertAdjacentHTML("beforeend", '<circle cx="110" cy="110" r="48" fill="white" pointer-events="none"/>');
+            }
+            overtimePie.insertAdjacentHTML("beforeend",
+                `<text x="110" y="105" text-anchor="middle" font-size="23" font-weight="700" fill="#172033" pointer-events="none">${total}</text>` +
+                '<text x="110" y="127" text-anchor="middle" font-size="12" fill="#66758a" pointer-events="none">records</text>');
+
+            overtimePie.querySelectorAll(".slice").forEach(segment => {
+                segment.addEventListener("click", () => selectHoursCategory(segment.dataset.hoursCategory));
+            });
+            renderOvertimeLegend();
+        }
+
+        // Show counts for both hour groups, including zero-count categories.
+        function renderOvertimeLegend() {
+            const legend = document.getElementById("overtime-legend");
+            legend.innerHTML = HOURS_ENTRIES.map(([category, count]) => {
+                const label = category === "overtime"
+                    ? `Overtime (> ${DATA.overtime_threshold}h)`
+                    : `At or below ${DATA.overtime_threshold}h`;
+                return `<button data-category="${category}"><i class="color-swatch" style="background:${HOURS_COLORS[category]}"></i>${label} (${count})</button>`;
+            }).join("");
+            legend.querySelectorAll("button").forEach(button => {
+                button.addEventListener("click", () => selectHoursCategory(button.dataset.category));
+            });
         }
 
         function renderStatusChart() {
@@ -357,10 +446,13 @@
                     DATA.rejected.map(row => [row.source_row, row.employee_id, row.name, row.date, row.status, row.rejection_reasons])
                 );
             } else {
-                if (currentFilter.mode === "overtime") {
-                    records = records.filter(record => record.overtime);
-                    title = "Overtime records (more than " + DATA.overtime_threshold + " hours)";
-                    note = "Accepted attendance records with more than " + DATA.overtime_threshold + " working hours.";
+                if (currentFilter.mode === "overtime" || currentFilter.mode === "within_limit") {
+                    const overtime = currentFilter.mode === "overtime";
+                    records = records.filter(record => Boolean(record.overtime) === overtime);
+                    title = overtime ? "Overtime records" : "Records at or below " + DATA.overtime_threshold + " hours";
+                    note = overtime
+                        ? "Accepted records with more than " + DATA.overtime_threshold + " working hours."
+                        : "Accepted records with " + DATA.overtime_threshold + " or fewer working hours.";
                 } else if (currentFilter.mode === "exceptions") {
                     records = records.filter(record => record.exception);
                     title = "Attendance exceptions";
@@ -406,6 +498,7 @@
         // Start the report with summary data, charts, and all accepted attendance rows.
         renderSummaryCards();
         renderStatusChart();
+        renderOvertimeChart();
         renderEmployeeBars();
         renderDetails();
     </script>
